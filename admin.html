@@ -1610,7 +1610,12 @@ body{
 ========================================================= */
 const SUPABASE_URL = "https://kieedhsfjlaseyfhckdd.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_Cssg1pWMHqDVUhZdczsA9g_bbs8nbUK";
-const ADMIN_UID = "bd555dc4-ba93-4180-8b41-55c2e6a1d84f";
+
+const ADMIN_UIDS = [
+  "bd555dc4-ba93-4180-8b41-55c2e6a1d84f",
+  "8e8029aa-356c-48c8-99c4-278680b8363b"
+];
+
 const TABLA = "tropic_products";
 const BUCKET = "tropic-products";
 const CATEGORIAS = ["Tenis para dama", "Tenis para hombre", "Tenis para niños", "Playeras", "Gorras", "Accesorios"];
@@ -1634,7 +1639,7 @@ async function iniciarSesion(e) {
   try {
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    if (data.user?.id !== ADMIN_UID) {
+    if (!ADMIN_UIDS.includes(data.user?.id)) {
       await supabaseClient.auth.signOut();
       throw new Error("Esta cuenta no tiene autorización para administrar Tropic District.");
     }
@@ -1655,7 +1660,7 @@ function ocultarErrorLogin() { $("loginError").style.display = "none"; }
 
 async function mostrarAdmin() {
   const { data: { user }, error } = await supabaseClient.auth.getUser();
-  if (error || !user || user.id !== ADMIN_UID) {
+  if (error || !user || !ADMIN_UIDS.includes(user.id)) {
     await supabaseClient.auth.signOut();
     $("admin").style.display = "none";
     $("login").style.display = "flex";
