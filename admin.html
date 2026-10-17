@@ -1973,6 +1973,95 @@ async function subirAssetVisual(assetKey,short) {
   } finally { boton.disabled=false; boton.textContent=texto; }
 }
 
+/* =========================================================
+   ELIMINAR LOGOS
+========================================================= */
+
+function agregarBotonesEliminarLogos() {
+  Object.keys(nombresAsset)
+    .filter(key => key.endsWith('_logo'))
+    .forEach(assetKey => {
+      const short = assetKey.replace('_logo', '-logo');
+      const input = $('file-' + short);
+      if (!input) return;
+
+      const tarjeta = input.closest('.asset-card');
+      if (!tarjeta || tarjeta.querySelector('[data-eliminar-logo]')) return;
+
+      const boton = document.createElement('button');
+      boton.type = 'button';
+      boton.dataset.eliminarLogo = assetKey;
+      boton.textContent = 'ELIMINAR LOGO';
+      boton.style.background = 'var(--rojo)';
+      boton.style.cursor = 'pointer';
+
+      boton.addEventListener('click', () => {
+        eliminarLogoVisual(assetKey, short, boton);
+      });
+
+      tarjeta.appendChild(boton);
+    });
+}
+
+async function eliminarLogoVisual(assetKey, short, boton) {
+  if (!confirm(
+    `¿Deseas quitar el logo guardado de “${nombresAsset[assetKey]}”?`
+  )) return;
+
+  const tarjeta = boton.closest('.asset-card');
+  const botones = Array.from(tarjeta.querySelectorAll('button'));
+  const estados = botones.map(b => b.disabled);
+
+  botones.forEach(b => { b.disabled = true; });
+  boton.textContent = 'ELIMINANDO...';
+
+  try {
+    const { data, error } = await supabaseClient
+      .from(TABLA_ASSETS)
+      .delete()
+      .eq('asset_key', assetKey)
+      .select('asset_key');
+
+    if (error) throw error;
+
+    if (!data || !data.length) {
+      throw new Error(
+        'No se encontró un logo guardado para eliminar, o la cuenta no tiene permiso.'
+      );
+    }
+
+    const preview = $('preview-' + short);
+    const input = $('file-' + short);
+
+    if (preview) {
+      if (preview.dataset.objectUrl) {
+        URL.revokeObjectURL(preview.dataset.objectUrl);
+        delete preview.dataset.objectUrl;
+      }
+
+      preview.removeAttribute('src');
+      preview.alt = 'Sin logo guardado';
+    }
+
+    if (input) input.value = '';
+
+    mostrarToast('Logo eliminado de la configuración de la tienda.');
+
+  } catch (error) {
+    console.error(error);
+    mostrarToast(
+      'No se pudo eliminar el logo: ' +
+      (error.message || 'Error desconocido')
+    );
+
+  } finally {
+    botones.forEach((b, i) => { b.disabled = estados[i]; });
+    boton.textContent = 'ELIMINAR LOGO';
+  }
+}
+
+agregarBotonesEliminarLogos();  
+
 prepararPreviewsAssets();
 comprobarSesion();
 </script>
