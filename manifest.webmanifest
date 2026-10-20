@@ -1,9 +1,9 @@
 
 {
   "id": "./",
-  "name": "Tropic District | Streetwear & Sneakers",
-  "short_name": "TROPIC",
-  "description": "Tienda de streetwear, sneakers y accesorios de Tropic District.",
+  "name": "Mar de Pasos | Calzado, Ropa y Accesorios",
+  "short_name": "MAR DE PASOS",
+  "description": "Tienda de calzado, ropa y accesorios de Mar de Pasos.",
   "lang": "es-MX",
   "start_url": "./index.html",
   "scope": "./",
