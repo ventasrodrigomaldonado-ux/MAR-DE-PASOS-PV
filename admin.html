@@ -1964,13 +1964,49 @@ async function cambiarEstado(id, estadoActual) {
 }
 
 async function eliminarProducto(id) {
-  const p = productos.find(item => String(item.id) === String(id));
-  if (!p || !confirm(`¿Seguro que deseas eliminar “${p.name}”? Esta acción no se puede deshacer.`)) return;
-  const { error } = await supabaseClient.from(TABLA).delete().eq("id", id);
-  if (error) { console.error(error); mostrarToast("No se pudo eliminar: " + error.message); return; }
-  // Se elimina el registro; la imagen en Storage se conserva por seguridad.
+  const p = productos.find(
+    item => String(item.id) === String(id)
+  );
+
+  if (!p || !confirm(
+    `¿Seguro que deseas eliminar “${p.name}”? Esta acción no se puede deshacer.`
+  )) return;
+
+  const { data, error } = await supabaseClient
+    .from(TABLA)
+    .delete()
+    .eq("id", id)
+    .select("id");
+
+  if (error) {
+    console.error(error);
+    mostrarToast("No se pudo eliminar: " + error.message);
+    return;
+  }
+
+  if (!data?.length) {
+    mostrarToast("No se eliminó el producto. Revisa los permisos.");
+    return;
+  }
+
   mostrarToast("Producto eliminado");
   await cargarProductos();
+
+  if (p.image_path) {
+    try {
+      await eliminarImagenSinUso(p.image_path);
+    } catch (errorLimpieza) {
+      console.warn(
+        "No se pudo eliminar la fotografía:",
+        errorLimpieza
+      );
+
+      mostrarToast(
+        "Producto eliminado, pero no se pudo borrar su fotografía: " +
+        errorLimpieza.message
+      );
+    }
+  }
 }
 
 function cerrarModal() {
