@@ -1820,6 +1820,36 @@ function previsualizarFoto() {
   preview.style.display = "block";
 }
 
+async function eliminarImagenSinUso(ruta, urlActual = null) {
+  if (!ruta) return;
+
+  const { data: productosUsando, error: errorProductos } =
+    await supabaseClient
+      .from(TABLA)
+      .select("id")
+      .eq("image_path", ruta)
+      .limit(1);
+
+  if (errorProductos) throw errorProductos;
+  if (productosUsando?.length) return;
+
+  const { data: assetsUsando, error: errorAssets } =
+    await supabaseClient
+      .from("tropic_site_assets")
+      .select("asset_key")
+      .eq("storage_path", ruta)
+      .limit(1);
+
+  if (errorAssets) throw errorAssets;
+  if (assetsUsando?.length) return;
+
+  const { error } = await supabaseClient.storage
+    .from(BUCKET)
+    .remove([ruta]);
+
+  if (error) throw error;
+}  
+
 async function subirImagen(archivo) {
   if (!archivo) return null;
   if (!archivo.type.startsWith("image/")) throw new Error("El archivo seleccionado no es una imagen.");
@@ -1886,13 +1916,39 @@ async function guardarProducto(e) {
     } else {
       ({ error } = await supabaseClient.from(TABLA).insert(datos));
     }
-    if (error) throw error;
+        if (error) throw error;
+
+    const rutaAnterior = productoEditando?.image_path;
+
     cerrarModal();
-    mostrarToast(productoEditando ? "Producto actualizado ✓" : "Producto agregado ✓");
+    mostrarToast("Producto guardado correctamente");
+
     await cargarProductos();
+
+    if (archivo && rutaAnterior && rutaAnterior !== imagePath) {
+      try {
+        await eliminarImagenSinUso(rutaAnterior);
+      } catch (errorLimpieza) {
+        console.warn(
+          "No se pudo eliminar la fotografía anterior:",
+          errorLimpieza
+        );
+
+        mostrarToast(
+          "Producto guardado, pero no se pudo eliminar la foto anterior: " +
+          errorLimpieza.message
+        );
+      }
+    }
+
   } catch (error) {
     console.error(error);
-    mostrarToast("No se pudo guardar: " + (error.message || "Error desconocido"));
+
+    mostrarToast(
+      "No se pudo guardar: " +
+      (error.message || "Error desconocido")
+    );
+
   } finally {
     guardando = false;
     boton.disabled = false;
