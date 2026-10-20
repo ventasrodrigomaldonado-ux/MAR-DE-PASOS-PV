@@ -2054,27 +2054,138 @@ async function cargarAssetsGuardados() {
     const preview=$('preview-'+short); if(preview) preview.src=row.asset_url;
   });
 }
-async function subirAssetVisual(assetKey,short) {
-  const input=$('file-'+short); const file=input?.files?.[0];
-  if(!file){mostrarToast('Primero selecciona la imagen.');return;}
-  if(!file.type.startsWith('image/')){mostrarToast('El archivo debe ser una imagen.');return;}
-  const boton=input.parentElement.querySelector('button'); const texto=boton.textContent;
-  boton.disabled=true; boton.textContent='SUBIENDO...';
-  try {
-    const extension=(file.name.split('.').pop()||'jpg').toLowerCase().replace(/[^a-z0-9]/g,'')||'jpg';
-    const ruta=`productos/identidad/${assetKey}-${Date.now()}.${extension}`;
-    const {error:uploadError}=await supabaseClient.storage.from(BUCKET).upload(ruta,file,{cacheControl:'3600',upsert:false,contentType:file.type});
-    if(uploadError) throw uploadError;
-    const {data:publicData}=supabaseClient.storage.from(BUCKET).getPublicUrl(ruta);
-    const {error:dbError}=await supabaseClient.from(TABLA_ASSETS).upsert({asset_key:assetKey,asset_url:publicData.publicUrl,storage_path:ruta,updated_at:new Date().toISOString()},{onConflict:'asset_key'});
-    if(dbError) throw dbError;
-    const preview=$('preview-'+short); if(preview) preview.src=publicData.publicUrl;
-    input.value=''; mostrarToast(`${nombresAsset[assetKey]} guardado correctamente ✓`);
-  } catch(error) {
-    console.error(error); mostrarToast('No se pudo guardar la imagen: '+(error.message||'Error desconocido'));
-  } finally { boton.disabled=false; boton.textContent=texto; }
-}
+async function subirAssetVisual(assetKey, short) {
+  const input = $("file-" + short);
+  const file = input?.files?.[0];
 
+  if (!file) {
+    mostrarToast("Primero selecciona una imagen.");
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    mostrarToast("El archivo debe ser una imagen.");
+    return;
+  }
+
+  const boton = input.parentElement.querySelector("button");
+  const textoOriginal = boton.textContent;
+
+  boton.disabled = true;
+  boton.textContent = "SUBIENDO...";
+
+  let rutaNueva = null;
+  let guardado = false;
+
+  try {
+    const { data: anterior, error: errorConsulta } =
+      await supabaseClient
+        .from(TABLA_ASSETS)
+        .select("storage_path")
+        .eq("asset_key", assetKey)
+        .maybeSingle();
+
+    if (errorConsulta) throw errorConsulta;
+
+    const extension = (
+      file.name.split(".").pop() || "jpg"
+    ).toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+
+    rutaNueva =
+      `productos/identidad/${assetKey}-${Date.now()}-${crypto.randomUUID()}.${extension}`;
+
+    const { error: uploadError } =
+      await supabaseClient.storage
+        .from(BUCKET)
+        .upload(rutaNueva, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type
+        });
+
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } =
+      supabaseClient.storage
+        .from(BUCKET)
+        .getPublicUrl(rutaNueva);
+
+    const { error: dbError } =
+      await supabaseClient
+        .from(TABLA_ASSETS)
+        .upsert({
+          asset_key: assetKey,
+          asset_url: publicData.publicUrl,
+          storage_path: rutaNueva,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: "asset_key"
+        });
+
+    if (dbError) throw dbError;
+
+    guardado = true;
+
+    const preview = $("preview-" + short);
+
+    if (preview) {
+      if (preview.dataset.objectUrl) {
+        URL.revokeObjectURL(preview.dataset.objectUrl);
+        delete preview.dataset.objectUrl;
+      }
+
+      preview.src = publicData.publicUrl;
+    }
+
+    input.value = "";
+
+    mostrarToast(
+      `${nombresAsset[assetKey]} actualizado correctamente`
+    );
+
+    if (
+      anterior?.storage_path &&
+      anterior.storage_path !== rutaNueva
+    ) {
+      try {
+        await eliminarImagenSinUso(anterior.storage_path);
+      } catch (errorLimpieza) {
+        console.warn(
+          "No se pudo eliminar la fotografía anterior:",
+          errorLimpieza
+        );
+
+        mostrarToast(
+          "Imagen guardada, pero no se pudo borrar la anterior: " +
+          errorLimpieza.message
+        );
+      }
+    }
+
+  } catch (error) {
+    console.error(error);
+
+    if (rutaNueva && !guardado) {
+      try {
+        await eliminarImagenSinUso(rutaNueva);
+      } catch (errorLimpieza) {
+        console.warn(
+          "No se pudo limpiar el archivo nuevo:",
+          errorLimpieza
+        );
+      }
+    }
+
+    mostrarToast(
+      "No se pudo guardar la imagen: " +
+      (error.message || "Error desconocido")
+    );
+
+  } finally {
+    boton.disabled = false;
+    boton.textContent = textoOriginal;
+  }
+}
 /* =========================================================
    ELIMINAR LOGOS
 ========================================================= */
@@ -2107,33 +2218,55 @@ function agregarBotonesEliminarLogos() {
 
 async function eliminarLogoVisual(assetKey, short, boton) {
   if (!confirm(
-    `¿Deseas quitar el logo guardado de “${nombresAsset[assetKey]}”?`
+    `¿Deseas eliminar el logo guardado de “${nombresAsset[assetKey]}”?`
   )) return;
 
-  const tarjeta = boton.closest('.asset-card');
-  const botones = Array.from(tarjeta.querySelectorAll('button'));
+  const tarjeta = boton.closest(".asset-card");
+  const botones = Array.from(tarjeta.querySelectorAll("button"));
   const estados = botones.map(b => b.disabled);
 
-  botones.forEach(b => { b.disabled = true; });
-  boton.textContent = 'ELIMINANDO...';
+  botones.forEach(b => {
+    b.disabled = true;
+  });
+
+  boton.textContent = "ELIMINANDO...";
 
   try {
+    // 1. Buscar el logo registrado y su ruta en Storage
+    const { data: anterior, error: errorConsulta } =
+      await supabaseClient
+        .from(TABLA_ASSETS)
+        .select("storage_path")
+        .eq("asset_key", assetKey)
+        .maybeSingle();
+
+    if (errorConsulta) throw errorConsulta;
+
+    if (!anterior) {
+      mostrarToast(
+        "No hay un logo registrado en la base de datos."
+      );
+      return;
+    }
+
+    // 2. Eliminar el registro de la tienda
     const { data, error } = await supabaseClient
       .from(TABLA_ASSETS)
       .delete()
-      .eq('asset_key', assetKey)
-      .select('asset_key');
+      .eq("asset_key", assetKey)
+      .select("asset_key");
 
     if (error) throw error;
 
-    if (!data || !data.length) {
+    if (!data?.length) {
       throw new Error(
-        'No se encontró un logo guardado para eliminar, o la cuenta no tiene permiso.'
+        "Supabase no permitió eliminar el registro. Revisa los permisos DELETE."
       );
     }
 
-    const preview = $('preview-' + short);
-    const input = $('file-' + short);
+    // 3. Limpiar la vista previa
+    const preview = $("preview-" + short);
+    const input = $("file-" + short);
 
     if (preview) {
       if (preview.dataset.objectUrl) {
@@ -2141,27 +2274,49 @@ async function eliminarLogoVisual(assetKey, short, boton) {
         delete preview.dataset.objectUrl;
       }
 
-      preview.removeAttribute('src');
-      preview.alt = 'Sin logo guardado';
+      preview.removeAttribute("src");
+      preview.alt = "Sin logo guardado";
     }
 
-    if (input) input.value = '';
+    if (input) {
+      input.value = "";
+    }
 
-    mostrarToast('Logo eliminado de la configuración de la tienda.');
+    mostrarToast("Logo eliminado de la tienda correctamente");
+
+    // 4. Eliminar la fotografía de Storage si ya no se utiliza
+    if (anterior.storage_path) {
+      try {
+        await eliminarImagenSinUso(anterior.storage_path);
+      } catch (errorLimpieza) {
+        console.warn(
+          "No se pudo eliminar el archivo de Storage:",
+          errorLimpieza
+        );
+
+        mostrarToast(
+          "Logo quitado de la tienda, pero no se pudo borrar el archivo: " +
+          errorLimpieza.message
+        );
+      }
+    }
 
   } catch (error) {
     console.error(error);
+
     mostrarToast(
-      'No se pudo eliminar el logo: ' +
-      (error.message || 'Error desconocido')
+      "No se pudo eliminar el logo: " +
+      (error.message || "Error desconocido")
     );
 
   } finally {
-    botones.forEach((b, i) => { b.disabled = estados[i]; });
-    boton.textContent = 'ELIMINAR LOGO';
+    botones.forEach((b, i) => {
+      b.disabled = estados[i];
+    });
+
+    boton.textContent = "ELIMINAR LOGO";
   }
 }
-
 agregarBotonesEliminarLogos();  
 
 prepararPreviewsAssets();
